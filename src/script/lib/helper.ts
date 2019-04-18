@@ -29,6 +29,13 @@ export function escapeHTML(str: string): string {
   );
 }
 
+// /[-\/\\^$*+?.()|[\]{}]/g
+// /[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g
+// Removing '-' for '/пресс-релиз/, giu'
+export function escapeRegExp(str: string): string {
+  return str.replace(/[\/\\^$*+?.()|[\]{}]/g, '\\$&');
+}
+
 export function exportToFile(dataStr, fileName = 'data.txt') {
   let dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
   let linkElement = document.createElement('a');

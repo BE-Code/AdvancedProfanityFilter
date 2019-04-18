@@ -1,22 +1,26 @@
-import { removeFromArray } from './lib/helper';
+import { escapeRegExp, removeFromArray } from './lib/helper';
 
 export default class Domain {
   tab: any;
   url: URL;
   hostname: string;
 
-  static domainMatch(domain: string, domains: string[]): boolean {
-    let result = false;
-
-    for (let x = 0; x < domains.length; x++) {
-      let domainRegex = new RegExp('(^|\.)' + domains[x], 'i');
-      if (domainRegex.test(domain)) {
-        result = true;
-        break;
+  static domainMatch(currentDomain: string, domains: string[]): boolean {
+    domains.forEach(domain => {
+      if (new RegExp('(^|\.)' + domain, 'i').test(currentDomain)) {
+        return true;
       }
-    }
+    });
 
-    return result;
+    return false;
+  }
+
+  static pageMatch(pathname: string, pages: string[]): boolean {
+    return Boolean(
+      pages.find(page => {
+        return (new RegExp('^' + escapeRegExp(page) + '.*').test(pathname));
+      })
+    );
   }
 
   // If a parent domain (example.com) is included, it will not match all subdomains.

@@ -11,7 +11,13 @@ export default class Config {
   defaultSubstitution: string;
   defaultWordMatchMethod: number;
   defaultWordRepeat: boolean;
-  disabledDomains: string[];
+  domains: {
+    [domain: string]: {
+      disabled: boolean;
+      disabledPages: string[];
+      enabledPages: string[];
+    }
+  };
   filterMethod: number;
   filterWordList: boolean;
   globalMatchMethod: number;
@@ -52,7 +58,18 @@ export default class Config {
     defaultSubstitution: 'censored',
     defaultWordMatchMethod: 0,
     defaultWordRepeat: false,
-    disabledDomains: [],
+    domains: {
+      "stackoverflow.com": {
+        disabled: false,
+        disabledPages: ['questions/46241987'],
+        enabledPages: ['questions/190852']
+      },
+      "www.reddit.com": {
+        disabled: false,
+        disabledPages: ['r/latterdaysaints'],
+        enabledPages: []
+      }
+    },
     filterMethod: 1, // ['Censor', 'Substitute', 'Remove'];
     filterWordList: true,
     globalMatchMethod: 3, // ['Exact', 'Partial', 'Whole', 'Per-Word', 'RegExp']

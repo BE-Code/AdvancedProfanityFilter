@@ -1,6 +1,7 @@
+import { escapeRegExp } from './helper';
+
 export default class Word {
   private static readonly _edgePunctuationRegExp = /(^[,.'"!?%$]|[,.'"!?%$]$)/;
-  private static readonly _escapeRegExp = /[\/\\^$*+?.()|[\]{}]/g;
   private static readonly _unicodeRegExp = /[^\u0000-\u00ff]/;
   private static readonly _unicodeWordBoundary = '[\\s.,\'"+!?|-]';
   static readonly nonWordRegExp = new RegExp('^\\s*[^\\w]+\\s*$', 'g');
@@ -110,17 +111,10 @@ export default class Word {
     return Word._unicodeRegExp.test(str);
   }
 
-  // /[-\/\\^$*+?.()|[\]{}]/g
-  // /[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g
-  // Removing '-' for '/пресс-релиз/, giu'
-  static escapeRegExp(str: string): string {
-    return str.replace(Word._escapeRegExp, '\\$&');
-  }
-
   // Process the rest of the word (word excluding first character)
   // This will escape the word and optionally include repeating characters
   static processPhrase(str: string, matchRepeated: boolean): string {
-    var escaped = Word.escapeRegExp(str);
+    var escaped = escapeRegExp(str);
     if (matchRepeated) {
       return Word.repeatingCharacterRegexp(escaped);
     }

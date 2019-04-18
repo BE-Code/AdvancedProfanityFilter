@@ -16,10 +16,17 @@ interface Message {
 export default class WebFilter extends Filter {
   advanced: boolean;
   cfg: WebConfig;
-  hostname: string;
-  mutePage: boolean;
+  disabled: boolean;
+  lastHref: string;
   lastSubtitle: string;
+  location: {
+    hostname: string;
+    href: string;
+    pathname: string;
+  }
   muted: boolean;
+  mutePage: boolean;
+  observer: MutationObserver;
   subtitleSelector: string;
   summary: object;
   volume: number;
@@ -30,11 +37,32 @@ export default class WebFilter extends Filter {
     this.muted = false;
     this.summary = {};
     this.volume = 1;
+
+    // The hostname should resolve to the browser window's URI (or the parent of an IFRAME) for disabled/advanced page checks
+    if (window.location == window.parent.location) {
+      this.location = {
+        hostname: document.location.hostname,
+        href: document.location.href,
+        pathname: document.location.pathname.replace(/^\//, '')
+      };
+    } else {
+      this.location = {
+        hostname: new URL(document.referrer).hostname,
+        href: new URL(document.referrer).href,
+        pathname: new URL(document.referrer).pathname.replace(/^\//, '')
+      };
+    }
+    this.lastHref = this.location.href; // TODO: What about iFrames?
+    // TODO: WORKING HERE - Testing when we detect a change
+  }
+
+  updateLocation() {
+    // TODO
   }
 
   // Always use the top frame for page check
   advancedPage(): boolean {
-    return Domain.domainMatch(this.hostname, this.cfg.advancedDomains);
+    return Domain.domainMatch(this.location.hostname, this.cfg.advancedDomains);
   }
 
   advancedReplaceText(node) {
@@ -54,12 +82,12 @@ export default class WebFilter extends Filter {
       if (!Page.isForbiddenNode(node)) {
         // console.log('Added node(s):', node); // DEBUG - Mutation - addedNodes
         if (filter.mutePage && WebAudio.youTubeAutoSubsPresent(filter)) { // YouTube Auto subs
-          if (WebAudio.youTubeAutoSubsSupportedNode(filter.hostname, node)) {
+          if (WebAudio.youTubeAutoSubsSupportedNode(filter.location.hostname, node)) {
             WebAudio.cleanYouTubeAutoSubs(filter, node); // Clean Auto subs
           } else if (!WebAudio.youTubeAutoSubsNodeIsSubtitleText(node)) {
             filter.cleanNode(node); // Clean the rest of the page
           }
-        } else if (filter.mutePage && WebAudio.supportedNode(filter.hostname, node)) {
+        } else if (filter.mutePage && WebAudio.supportedNode(filter.location.hostname, node)) {
           WebAudio.clean(filter, node, filter.subtitleSelector);
         } else {
           // console.log('Added node to filter', node); // DEBUG - Mutation addedNodes
@@ -74,7 +102,7 @@ export default class WebFilter extends Filter {
     });
 
     mutation.removedNodes.forEach(node => {
-      if (filter.mutePage && WebAudio.supportedNode(filter.hostname, node)) {
+      if (filter.mutePage && WebAudio.supportedNode(filter.location.hostname, node)) {
         WebAudio.unmute(filter);
       }
     });
@@ -126,39 +154,83 @@ export default class WebFilter extends Filter {
     }
   }
 
-  async cleanPage() {
-    // @ts-ignore: Type WebConfig is not assignable to type Config
-    this.cfg = await WebConfig.build();
+  activate() {
+    let message: Message = { disabled: this.disabled };
 
-    // The hostname should resolve to the browser window's URI (or the parent of an IFRAME) for disabled/advanced page checks
-    this.hostname = (window.location == window.parent.location) ? document.location.hostname : new URL(document.referrer).hostname;
-
-    // Check if the topmost frame is a disabled domain
-    let message: Message = { disabled: this.disabledPage() };
-    if (message.disabled) {
-      chrome.runtime.sendMessage(message);
-      return false;
-    }
+    // Detect if we should mute audio for the current page
+    this.mutePage = (this.cfg.muteAudio && Domain.domainMatch(this.location.hostname, WebAudio.supportedPages()));
+    if (this.mutePage) { this.subtitleSelector = WebAudio.subtitleSelector(this.location.hostname); }
 
     // Check for advanced mode on current domain
     this.advanced = this.advancedPage();
     message.advanced = this.advanced; // Set badge color
     chrome.runtime.sendMessage(message);
 
-    // Detect if we should mute audio for the current page
-    this.mutePage = (this.cfg.muteAudio && Domain.domainMatch(this.hostname, WebAudio.supportedPages()));
-    if (this.mutePage) { this.subtitleSelector = WebAudio.subtitleSelector(this.hostname); }
-
     // Remove profanity from the main document and watch for new nodes
-    this.init();
     this.advanced ? this.advancedReplaceText(document) : this.cleanNode(document);
     this.updateCounterBadge();
     this.observeNewNodes();
   }
 
+  deactivate() {
+    this.observer.disconnect();
+    let message: Message = { disabled: this.disabled };
+    chrome.runtime.sendMessage(message);
+  }
+
+  async start() {
+    let self = this;
+
+    // @ts-ignore: Type WebConfig is not assignable to type Config
+    this.cfg = await WebConfig.build();
+
+    this.init(); // TODO: Only if needed?
+
+    // Setup MutationObserver to watch for DOM changes
+    this.observer = new MutationObserver(function(mutations) {
+      mutations.forEach(function(mutation) {
+        self.checkMutationForProfanity(mutation);
+      });
+      self.updateCounterBadge();
+    });
+
+    this.watchForNavigation();
+
+    // Check if the topmost frame is a disabled domain
+    this.disabled = this.disabledPage();
+
+    // if (!this.disabled) { this.activate(); }
+    this.disabled ? this.deactivate() : this.activate();
+  }
+
   // Always use the top frame for page check
+  // Checks if the current page should be disabled
+  // The filter is enabled if not explicitly disabled, or if the current page is in enabledPages
+  // The filter is disabled if the domain is disabled, or if the current page is disabled in disabledPages
   disabledPage(): boolean {
-    return Domain.domainMatch(this.hostname, this.cfg.disabledDomains);
+    let self = this;
+    let config;
+    if (self.cfg.domains[self.location.hostname]) {
+      config = self.cfg.domains[self.location.hostname];
+    } else {
+      config = Object.keys(self.cfg.domains).forEach(domain => {
+        if (new RegExp('(^|\.)' + domain, 'i').test(self.location.hostname)) {
+          return self.cfg.domains[domain];
+        }
+      });
+    }
+
+    if (config) {
+      if (config.disabled) {
+        let match = Domain.pageMatch(this.location.pathname, config.enabledPages);
+        return match ? false : true;
+      } else {
+        let match = Domain.pageMatch(this.location.pathname, config.disabledPages);
+        return match ? true : false;
+      }
+    } else {
+      return false;
+    }
   }
 
   foundMatch(word) {
@@ -180,7 +252,6 @@ export default class WebFilter extends Filter {
   }
 
   observeNewNodes() {
-    let self = this;
     let observerConfig = {
       characterData: true,
       characterDataOldValue: true,
@@ -188,15 +259,30 @@ export default class WebFilter extends Filter {
       subtree: true,
     };
 
-    // When DOM is modified, check for nodes to filter
-    let observer = new MutationObserver(function(mutations) {
-      mutations.forEach(function(mutation) {
-        self.checkMutationForProfanity(mutation);
-      });
-      self.updateCounterBadge();
-    });
+    this.observer.observe(document, observerConfig);
+  }
 
-    observer.observe(document, observerConfig);
+  watchForNavigation() {
+    let self = this;
+    window.onload = function() {
+      let bodyList = document.querySelector("body");
+      let observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) { // TODO: change to find?
+          if (self.lastHref != document.location.href) { // TOOD: What about iFrames?
+            console.log('Page navigation detected');
+
+            self.lastHref = document.location.href;
+            let changed = self.disabledPage();
+            if (changed != self.disabled) {
+              self.disabled = changed;
+              self.disabled ? self.deactivate() : self.activate();
+            }
+          }
+        });
+      });
+
+      observer.observe(bodyList, { childList: true, subtree: true });
+    };
   }
 
   replaceTextResult(string: string, stats: boolean = true) {
@@ -231,5 +317,5 @@ if (typeof window !== 'undefined' && ['[object Window]', '[object ContentScriptG
   });
 
   /* istanbul ignore next */
-  filter.cleanPage();
+  filter.start();
 }
