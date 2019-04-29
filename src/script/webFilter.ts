@@ -25,6 +25,7 @@ export default class WebFilter extends Filter {
     pathname: string;
   }
   muted: boolean;
+  mutedAt: number;
   mutePage: boolean;
   observer: MutationObserver;
   subtitleSelector: string;
@@ -35,6 +36,7 @@ export default class WebFilter extends Filter {
     super();
     this.advanced = false;
     this.muted = false;
+    this.mutedAt = 0;
     this.summary = {};
     this.volume = 1;
 
@@ -56,8 +58,22 @@ export default class WebFilter extends Filter {
     // TODO: WORKING HERE - Testing when we detect a change
   }
 
-  updateLocation() {
-    // TODO
+  activate() {
+    let message: Message = { disabled: this.disabled };
+
+    // Detect if we should mute audio for the current page
+    this.mutePage = (this.cfg.muteAudio && Domain.domainMatch(this.location.hostname, WebAudio.supportedPages()));
+    if (this.mutePage) { this.subtitleSelector = WebAudio.subtitleSelector(this.location.hostname); }
+
+    // Check for advanced mode on current domain
+    this.advanced = this.advancedPage();
+    message.advanced = this.advanced; // Set badge color
+    chrome.runtime.sendMessage(message);
+
+    // Remove profanity from the main document and watch for new nodes
+    this.advanced ? this.advancedReplaceText(document) : this.cleanNode(document);
+    this.updateCounterBadge();
+    observer.observe(document, observerConfig);
   }
 
   // Always use the top frame for page check
@@ -83,7 +99,11 @@ export default class WebFilter extends Filter {
         // console.log('Added node(s):', node); // DEBUG - Mutation - addedNodes
         if (filter.mutePage && WebAudio.youTubeAutoSubsPresent(filter)) { // YouTube Auto subs
           if (WebAudio.youTubeAutoSubsSupportedNode(filter.location.hostname, node)) {
-            WebAudio.cleanYouTubeAutoSubs(filter, node); // Clean Auto subs
+            if (WebAudio.youTubeAutoSubsCurrentRow(node)) {
+              WebAudio.cleanYouTubeAutoSubs(filter, node);
+            } else {
+              filter.cleanNode(node, false);
+            }
           } else if (!WebAudio.youTubeAutoSubsNodeIsSubtitleText(node)) {
             filter.cleanNode(node); // Clean the rest of the page
           }
@@ -102,7 +122,7 @@ export default class WebFilter extends Filter {
     });
 
     mutation.removedNodes.forEach(node => {
-      if (filter.mutePage && WebAudio.supportedNode(filter.location.hostname, node)) {
+      if (filter.mutePage && filter.muted && WebAudio.supportedNode(filter.location.hostname, node)) {
         WebAudio.unmute(filter);
       }
     });
@@ -126,7 +146,7 @@ export default class WebFilter extends Filter {
     // else { console.log('Forbidden mutation.target node:', mutation.target); } // DEBUG - Mutation target text
   }
 
-  cleanNode(node) {
+  cleanNode(node, stats: boolean = true) {
     if (Page.isForbiddenNode(node)) { return false; }
 
     if (node.childElementCount > 0) { // Tree node
@@ -134,42 +154,26 @@ export default class WebFilter extends Filter {
       while(treeWalker.nextNode()) {
         if (treeWalker.currentNode.childNodes.length > 0) {
           treeWalker.currentNode.childNodes.forEach(childNode => {
-            this.cleanNode(childNode);
+            this.cleanNode(childNode, stats);
           });
         } else {
-          this.cleanNode(treeWalker.currentNode);
+          this.cleanNode(treeWalker.currentNode, stats);
         }
       }
     } else { // Leaf node
       if (node.nodeName) {
         if (node.textContent.trim() != '') {
-          let result = this.replaceTextResult(node.textContent);
+          let result = this.replaceTextResult(node.textContent, stats);
           if (result.modified) {
             // console.log('[APF] Normal node changed:', result.original, result.filtered); // DEBUG - Mutation node
             node.textContent = result.filtered;
           }
+        } else if (node.shadowRoot != undefined) {
+          shadowObserver.observe(node.shadowRoot, observerConfig);
         }
       }
       // else { console.log('node without nodeName:', node); } // Debug
     }
-  }
-
-  activate() {
-    let message: Message = { disabled: this.disabled };
-
-    // Detect if we should mute audio for the current page
-    this.mutePage = (this.cfg.muteAudio && Domain.domainMatch(this.location.hostname, WebAudio.supportedPages()));
-    if (this.mutePage) { this.subtitleSelector = WebAudio.subtitleSelector(this.location.hostname); }
-
-    // Check for advanced mode on current domain
-    this.advanced = this.advancedPage();
-    message.advanced = this.advanced; // Set badge color
-    chrome.runtime.sendMessage(message);
-
-    // Remove profanity from the main document and watch for new nodes
-    this.advanced ? this.advancedReplaceText(document) : this.cleanNode(document);
-    this.updateCounterBadge();
-    this.observeNewNodes();
   }
 
   deactivate() {
@@ -184,22 +188,11 @@ export default class WebFilter extends Filter {
     // @ts-ignore: Type WebConfig is not assignable to type Config
     this.cfg = await WebConfig.build();
 
-    this.init(); // TODO: Only if needed?
-
-    // Setup MutationObserver to watch for DOM changes
-    this.observer = new MutationObserver(function(mutations) {
-      mutations.forEach(function(mutation) {
-        self.checkMutationForProfanity(mutation);
-      });
-      self.updateCounterBadge();
-    });
-
-    this.watchForNavigation();
+    this.init(); // TODO: Only do once
 
     // Check if the topmost frame is a disabled domain
     this.disabled = this.disabledPage();
-
-    // if (!this.disabled) { this.activate(); }
+    this.watchForNavigation();
     this.disabled ? this.deactivate() : this.activate();
   }
 
@@ -251,15 +244,32 @@ export default class WebFilter extends Filter {
     }
   }
 
-  observeNewNodes() {
-    let observerConfig = {
-      characterData: true,
-      characterDataOldValue: true,
-      childList: true,
-      subtree: true,
-    };
+  processMutations(mutations) {
+    mutations.forEach(function(mutation) {
+      filter.checkMutationForProfanity(mutation);
+    });
+    filter.updateCounterBadge();
+  }
 
-    this.observer.observe(document, observerConfig);
+  replaceTextResult(string: string, stats: boolean = true) {
+    let result = {} as any;
+    result.original = string;
+    result.filtered = filter.replaceText(string, stats);
+    result.modified = (result.filtered != string);
+    return result;
+  }
+
+  updateCounterBadge() {
+    /* istanbul ignore next */
+    // console.count('updateCounterBadge'); // Benchmarking - Executaion Count
+    if (this.counter > 0) {
+      try {
+        if (this.cfg.showCounter) chrome.runtime.sendMessage({ counter: this.counter.toString() });
+        if (this.cfg.showSummary) chrome.runtime.sendMessage({ summary: this.summary });
+      } catch (e) {
+        // console.log('Failed to sendMessage', e); // Error - Extension context invalidated.
+      }
+    }
   }
 
   watchForNavigation() {
@@ -284,37 +294,29 @@ export default class WebFilter extends Filter {
       observer.observe(bodyList, { childList: true, subtree: true });
     };
   }
-
-  replaceTextResult(string: string, stats: boolean = true) {
-    let result = {} as any;
-    result.original = string;
-    result.filtered = filter.replaceText(string);
-    result.modified = (result.filtered != string);
-    return result;
-  }
-
-  updateCounterBadge() {
-    /* istanbul ignore next */
-    // console.count('updateCounterBadge'); // Benchmarking - Executaion Count
-    if (this.counter > 0) {
-      try {
-        if (this.cfg.showCounter) chrome.runtime.sendMessage({ counter: this.counter.toString() });
-        if (this.cfg.showSummary) chrome.runtime.sendMessage({ summary: this.summary });
-      } catch (e) {
-        // console.log('Failed to sendMessage', e); // Error - Extension context invalidated.
-      }
-    }
-  }
 }
 
 // Global
-var filter = new WebFilter;
+let filter = new WebFilter;
+let observer;
+let shadowObserver;
+
+let observerConfig = {
+  characterData: true,
+  characterDataOldValue: true,
+  childList: true,
+  subtree: true,
+};
+
 if (typeof window !== 'undefined' && ['[object Window]', '[object ContentScriptGlobalScope]'].includes(({}).toString.call(window))) {
   /* istanbul ignore next */
   // Send summary data to popup
   chrome.runtime.onMessage.addListener(function(request, sender, sendResponse){
     if (filter.cfg.showSummary && request.popup && filter.counter > 0) chrome.runtime.sendMessage({ summary: filter.summary });
   });
+
+  observer = new MutationObserver(filter.processMutations);
+  shadowObserver = new MutationObserver(filter.processMutations);
 
   /* istanbul ignore next */
   filter.start();

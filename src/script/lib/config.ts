@@ -35,6 +35,7 @@ export default class Config {
   words: {
     [key: string]: WordOptions;
   };
+  youTubeAutoSubsMin: number;
 
   // TODO: Finish removing magic numbers?
   static readonly filterMethods = {
@@ -83,7 +84,8 @@ export default class Config {
     showSubtitles: 0,
     showSummary: true,
     showUpdateNotification: true,
-    substitutionMark: false
+    substitutionMark: false,
+    youTubeAutoSubsMin: 0
   };
 
   static readonly _defaultWords = {
@@ -93,7 +95,6 @@ export default class Config {
     'badass': { matchMethod: 1, repeat: true, sub: 'cool' },
     'bastard': { matchMethod: 1, repeat: true, sub: 'jerk' },
     'bitch': { matchMethod: 1, repeat: true, sub: 'jerk' },
-    'christ': { matchMethod: 0, repeat: true, sub: 'deity' },
     'cocksucker': { matchMethod: 1, repeat: true, sub: 'idiot' },
     'cunt': { matchMethod: 1, repeat: true, sub: 'explative' },
     'dammit': { matchMethod: 1, repeat: false, sub: 'dangit' },
@@ -106,8 +107,6 @@ export default class Config {
     'goddammit': { matchMethod: 1, repeat: true, sub: 'goshdangit' },
     'hell': { matchMethod: 0, repeat: true, sub: 'heck' },
     'jackass': { matchMethod: 1, repeat: true, sub: 'idiot' },
-    'jesus christ': { matchMethod: 1, repeat: true, sub: 'deity' },
-    'jesus': { matchMethod: 1, repeat: true, sub: 'deity' },
     'nigga': { matchMethod: 0, repeat: true, sub: 'ethnic slur' },
     'nigger': { matchMethod: 0, repeat: true, sub: 'ethnic slur' },
     'niggers': { matchMethod: 0, repeat: true, sub: 'ethnic slur' },
