@@ -183,8 +183,6 @@ export default class WebFilter extends Filter {
   }
 
   async start() {
-    let self = this;
-
     // @ts-ignore: Type WebConfig is not assignable to type Config
     this.cfg = await WebConfig.build();
 
@@ -275,7 +273,7 @@ export default class WebFilter extends Filter {
   watchForNavigation() {
     let self = this;
     window.onload = function() {
-      let bodyList = document.querySelector("body");
+      let bodyList = document.querySelector('body');
       let observer = new MutationObserver(function(mutations) {
         mutations.forEach(function(mutation) { // TODO: change to find?
           if (self.lastHref != document.location.href) { // TOOD: What about iFrames?
