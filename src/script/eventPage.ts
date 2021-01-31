@@ -1,11 +1,78 @@
 import DataMigration from './dataMigration';
 import Domain from './domain';
 import WebConfig from './webConfig';
+import Config from './lib/config';
 import { formatNumber } from './lib/helper';
 
-let Storage: BackgroundStorage = {
+let BackgroundStorage: BackgroundStorage = {
+  config: {},
   tabs: {},
 };
+
+async function loadConfig() {
+  BackgroundStorage.config = await getConfig([]);
+  console.log('pizza');
+}
+loadConfig();
+
+chrome.runtime.onConnect.addListener(function(port) {
+  console.assert(port.name == 'config');
+  port.onMessage.addListener(function(msg) {
+    if (msg.getConfig === true) {
+      port.postMessage(BackgroundStorage.config);
+    } else {
+      console.warn(JSON.stringify(msg));
+    }
+  });
+});
+
+// function updateConfig() {}
+function getConfig(keys: string[]) {
+  return new Promise(function(resolve, reject) {
+    let request = null; // Get all data from storage
+
+    if (keys.length > 0 && ! keys.some(key => WebConfig._splittingKeys.includes(key))) {
+      request = {};
+      keys.forEach(key => { request[key] = WebConfig._defaults[key]; });
+    }
+
+    chrome.storage.sync.get(request, function(items) {
+      // Add internal tracker for split keys
+      items._splitContainerKeys = {};
+
+      // Ensure defaults for undefined settings
+      Object.keys(WebConfig._defaults).forEach(function(defaultKey) {
+        if ((request == null || keys.includes(defaultKey)) && items[defaultKey] === undefined) {
+          items[defaultKey] = WebConfig._defaults[defaultKey];
+        }
+      });
+
+      // Add words if requested, and provide _defaultWords if needed
+      if (keys.length === 0 || keys.includes('words')) {
+        // Use default words if none were provided
+        if (items._words0 === undefined || Object.keys(items._words0).length == 0) {
+          items._words0 = Config._defaultWords;
+        }
+      }
+
+      WebConfig._splittingKeys.forEach(function(splittingKey) {
+        let keys = WebConfig.combineData(items, splittingKey);
+        if (keys) { items._splitContainerKeys[splittingKey] = keys; }
+      });
+
+      // Remove keys we didn't request (Required when requests for specific keys include ones that supports splitting)
+      if (request !== null && keys.length > 0) {
+        Object.keys(items).forEach(function(item) {
+          if (!keys.includes(item)) {
+            delete items[item];
+          }
+        });
+      }
+
+      resolve(items);
+    });
+  });
+}
 
 ////
 // Functions
@@ -35,7 +102,7 @@ function disableTabOnce(id: number): void {
 }
 
 function getTabOptions(id: number): TabStorageOptions {
-  return storedTab(id) ? Storage.tabs[id] : saveNewTabOptions(id);
+  return storedTab(id) ? BackgroundStorage.tabs[id] : saveNewTabOptions(id);
 }
 
 function notificationsOnClick(notificationId: string) {
@@ -147,7 +214,7 @@ function saveNewTabOptions(id: number, options: TabStorageOptions = {}): TabStor
   let tabOptions = Object.assign({}, _defaults, options) as TabStorageOptions;
   tabOptions.id = id;
   tabOptions.registeredAt = new Date().getTime();
-  Storage.tabs[id] = tabOptions;
+  BackgroundStorage.tabs[id] = tabOptions;
   return tabOptions;
 }
 
@@ -156,7 +223,7 @@ function saveTabOptions(id: number, options: TabStorageOptions = {}): TabStorage
 }
 
 function storedTab(id: number): boolean {
-  return Storage.tabs.hasOwnProperty(id);
+  return BackgroundStorage.tabs.hasOwnProperty(id);
 }
 
 function tabsOnActivated(tab: chrome.tabs.TabActiveInfo) {
@@ -165,7 +232,7 @@ function tabsOnActivated(tab: chrome.tabs.TabActiveInfo) {
 }
 
 function tabsOnRemoved(tabId: number) {
-  if (storedTab(tabId)) { delete Storage.tabs[tabId]; }
+  if (storedTab(tabId)) { delete BackgroundStorage.tabs[tabId]; }
 }
 
 async function toggleDomain(hostname: string, action: string) {

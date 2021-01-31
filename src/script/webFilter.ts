@@ -184,7 +184,8 @@ export default class WebFilter extends Filter {
   }
 
   async cleanPage() {
-    this.cfg = await WebConfig.build();
+    // this.cfg = await WebConfig.build();
+    console.timeEnd('loading');
     this.domain = Domain.byHostname(this.hostname, this.cfg.domains);
     // console.log('[APF] Config loaded', this.cfg); // Debug: General
 
@@ -362,6 +363,7 @@ const ObserverConfig: MutationObserverInit = {
   childList: true,
   subtree: true,
 };
+let port;
 
 if (typeof window !== 'undefined' && ['[object Window]', '[object ContentScriptGlobalScope]'].includes(({}).toString.call(window))) {
   filter.observer = new MutationObserver(filter.processMutations);
@@ -383,6 +385,21 @@ if (typeof window !== 'undefined' && ['[object Window]', '[object ContentScriptG
     filter.hostname = document.location.hostname;
   }
 
+  console.time('loading');
+
+  // Wait for config
+  port = chrome.runtime.connect({ name: 'config' });
+  port.postMessage({ getConfig: true });
+  port.onMessage.addListener(function(msg) {
+    // console.log('got response: ', JSON.stringify(msg));
+    // if (msg.config) {
+    filter.cfg = new WebConfig(msg);
+    /* istanbul ignore next */
+    filter.cleanPage();
+    // }
+  });
+
+  // don't cache:
   /* istanbul ignore next */
-  filter.cleanPage();
+  // filter.cleanPage();
 }

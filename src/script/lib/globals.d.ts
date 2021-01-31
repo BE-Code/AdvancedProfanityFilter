@@ -42,6 +42,7 @@ interface BackgroundData {
 }
 
 interface BackgroundStorage {
+  config: any;
   tabs?: {
     [tabId: number]: TabStorageOptions;
   };
