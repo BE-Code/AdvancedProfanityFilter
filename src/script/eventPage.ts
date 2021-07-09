@@ -2,8 +2,10 @@ import DataMigration from './dataMigration';
 import Domain from './domain';
 import WebConfig from './webConfig';
 import { formatNumber } from './lib/helper';
+import Logger from './lib/logger';
+const logger = new Logger();
 
-const BackgroundStorage: BackgroundStorage = {
+const backgroundStorage: BackgroundStorage = {
   tabs: {},
 };
 
@@ -35,7 +37,7 @@ function disableTabOnce(id: number): void {
 }
 
 function getTabOptions(id: number): TabStorageOptions {
-  return storedTab(id) ? BackgroundStorage.tabs[id] : saveNewTabOptions(id);
+  return storedTab(id) ? backgroundStorage.tabs[id] : saveNewTabOptions(id);
 }
 
 function notificationsOnClick(notificationId: string) {
@@ -52,8 +54,8 @@ function onInstalled(details: chrome.runtime.InstalledDetails) {
   if (details.reason == 'install') {
     chrome.runtime.openOptionsPage();
   } else if (details.reason == 'update') {
-    // const thisVersion = chrome.runtime.getManifest().version;
-    // console.log('Updated from ' + details.previousVersion + ' to ' + thisVersion);
+    const thisVersion = chrome.runtime.getManifest().version;
+    logger.info(`Updated from ${details.previousVersion} to ${thisVersion}`);
 
     // Open options page to show new features
     // chrome.runtime.openOptionsPage();
@@ -128,8 +130,12 @@ async function processSelection(action: string, selection: string) {
   const result = cfg[action](selection);
 
   if (result) {
-    const saved = await cfg.save();
-    if (!saved) { chrome.tabs.reload(); }
+    try {
+      await cfg.save();
+      chrome.tabs.reload();
+    } catch(e) {
+      logger.errorTime(`Failed to process selection '${selection}'.`, e);
+    }
   }
 }
 
@@ -147,7 +153,7 @@ function saveNewTabOptions(id: number, options: TabStorageOptions = {}): TabStor
   const tabOptions = Object.assign({}, _defaults, options) as TabStorageOptions;
   tabOptions.id = id;
   tabOptions.registeredAt = new Date().getTime();
-  BackgroundStorage.tabs[id] = tabOptions;
+  backgroundStorage.tabs[id] = tabOptions;
   return tabOptions;
 }
 
@@ -156,7 +162,7 @@ function saveTabOptions(id: number, options: TabStorageOptions = {}): TabStorage
 }
 
 function storedTab(id: number): boolean {
-  return BackgroundStorage.tabs.hasOwnProperty(id);
+  return backgroundStorage.tabs.hasOwnProperty(id);
 }
 
 function tabsOnActivated(tab: chrome.tabs.TabActiveInfo) {
@@ -165,7 +171,7 @@ function tabsOnActivated(tab: chrome.tabs.TabActiveInfo) {
 }
 
 function tabsOnRemoved(tabId: number) {
-  if (storedTab(tabId)) { delete BackgroundStorage.tabs[tabId]; }
+  if (storedTab(tabId)) { delete backgroundStorage.tabs[tabId]; }
 }
 
 async function toggleDomain(hostname: string, action: string) {
@@ -179,8 +185,12 @@ async function toggleDomain(hostname: string, action: string) {
       domain.advanced = !domain.advanced; break;
   }
 
-  const error = await domain.save(cfg);
-  if (!error) { chrome.tabs.reload(); }
+  try {
+    await domain.save(cfg);
+    chrome.tabs.reload();
+  } catch(e) {
+    logger.error(`Failed to modify '${action}' for domain '${domain.cfgKey}'.`, e, domain);
+  }
 }
 
 function toggleTabDisable(id: number) {

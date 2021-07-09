@@ -1,9 +1,11 @@
 import Constants from './lib/constants';
-import { dynamicList, escapeHTML } from './lib/helper';
+import { dynamicList } from './lib/helper';
 import WebAudioSites from './webAudioSites';
 import WebConfig from './webConfig';
 import Domain from './domain';
 import Page from './page';
+import Logger from './lib/logger';
+const logger = new Logger();
 
 class Popup {
   audioSiteKeys: string[];
@@ -75,9 +77,11 @@ class Popup {
   async filterMethodSelect() {
     const filterMethodSelect = document.getElementById('filterMethodSelect') as HTMLSelectElement;
     this.cfg.filterMethod = filterMethodSelect.selectedIndex;
-    const error = await this.cfg.save('filterMethod');
-    if (!error) {
+    try {
+      await this.cfg.save('filterMethod');
       chrome.tabs.reload();
+    } catch(e) {
+      logger.error('Failed to update selected filter method.', e);
     }
   }
 
@@ -92,9 +96,9 @@ class Popup {
     const wordListContainer = document.getElementById('wordListContainer') as HTMLInputElement;
     const wordlistSelect = document.getElementById('wordlistSelect') as HTMLSelectElement;
     const audioWordlistSelect = document.getElementById('audioWordlistSelect') as HTMLSelectElement;
-    dynamicList(Constants.orderedArray(Constants.DomainModes), domainModeSelect);
+    dynamicList(Constants.orderedArray(Constants.DOMAIN_MODES), domainModeSelect, true);
     domainModeSelect.selectedIndex = this.domain.getModeIndex();
-    dynamicList(Constants.orderedArray(Constants.FilterMethods), filterMethodSelect);
+    dynamicList(Constants.orderedArray(Constants.FILTER_METHODS), filterMethodSelect, true);
     filterMethodSelect.selectedIndex = this.cfg.filterMethod;
 
     if (this.cfg.wordlistsEnabled) {
@@ -163,9 +167,9 @@ class Popup {
         tooltipSpan.classList.add('summaryTooltip');
         tooltipSpan.classList.add('w3-tag');
         tooltipSpan.classList.add('w3-text');
-        tooltipSpan.textContent = escapeHTML(key);
+        tooltipSpan.textContent = key;
         const wordSpan = document.createElement('span');
-        wordSpan.textContent = escapeHTML(summary[key].filtered);
+        wordSpan.textContent = summary[key].filtered;
         wordCell.appendChild(tooltipSpan);
         wordCell.appendChild(wordSpan);
 
@@ -184,8 +188,12 @@ class Popup {
   async toggle(prop: string) {
     if (!this.protected) {
       this.domain[prop] = !this.domain[prop];
-      const error = await this.domain.save(this.cfg);
-      if (!error) { chrome.tabs.reload(); }
+      try {
+        await this.domain.save(this.cfg);
+        chrome.tabs.reload();
+      } catch(e) {
+        logger.error(`Failed to toggle domain '${this.domain.hostname}'.`, e);
+      }
     }
   }
 
@@ -193,8 +201,12 @@ class Popup {
     if (!this.protected) {
       const domainModeSelect = document.getElementById('domainModeSelect') as HTMLSelectElement;
       this.domain.updateFromModeIndex(domainModeSelect.selectedIndex);
-      const error = await this.domain.save(this.cfg);
-      if (!error) { chrome.tabs.reload(); }
+      try {
+        await this.domain.save(this.cfg);
+        chrome.tabs.reload();
+      } catch(e) {
+        logger.error(`Failed to update mode for domain '${this.domain.hostname}'.`, e);
+      }
     }
   }
 
@@ -202,8 +214,11 @@ class Popup {
     const element = event.target;
     const type = element.id === 'wordlistSelect' ? 'wordlistId' : 'audioWordlistId';
     this.domain[type] = element.selectedIndex > 0 ? element.selectedIndex - 1 : undefined; // index 0 = use default (undefined)
-    if (!await this.domain.save(this.cfg)) {
+    try {
+      await this.domain.save(this.cfg);
       chrome.tabs.reload();
+    } catch(e) {
+      logger.error(`Failed to select wordlist for domain ${this.domain.hostname}.`, e);
     }
   }
 }

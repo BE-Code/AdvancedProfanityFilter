@@ -8,6 +8,7 @@ export default class WebConfig extends Config {
   darkMode: boolean;
   domains: { [site: string]: DomainCfg };
   enabledDomainsOnly: boolean;
+  fillerAudio: string;
   muteAudio: boolean;
   muteAudioOnly: boolean;
   muteCueRequireShowing: boolean;
@@ -19,22 +20,24 @@ export default class WebConfig extends Config {
   youTubeAutoSubsMin: number;
 
   static readonly _classDefaults = {
-    domains: {},
     audioWordlistId: 0,
     customAudioSites: null,
     darkMode: false,
+    domains: {},
     enabledDomainsOnly: false,
+    fillerAudio: '',
     muteAudio: false,
     muteAudioOnly: false,
     muteCueRequireShowing: false,
-    muteMethod: Constants.MuteMethods.Tab,
+    muteMethod: Constants.MUTE_METHODS.TAB,
     password: null,
-    showSubtitles: Constants.ShowSubtitles.All,
+    showSubtitles: Constants.SHOW_SUBTITLES.ALL,
     showUpdateNotification: true,
     youTubeAutoSubsMax: 0,
     youTubeAutoSubsMin: 0,
   }
 
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   static readonly QUOTA_BYTES_PER_ITEM = 8192; // https://developer.chrome.com/apps/storage chrome.storage.sync.QUOTA_BYTES_PER_ITEM
   static readonly _defaults = Object.assign({}, Config._defaults, WebConfig._classDefaults);
   static readonly _splittingKeys = ['domains', 'words'];
@@ -147,7 +150,9 @@ export default class WebConfig extends Config {
   reset() {
     return new Promise((resolve, reject) => {
       chrome.storage.sync.clear(() => {
-        resolve(chrome.runtime.lastError ? 1 : 0);
+        chrome.runtime.lastError
+          ? reject(chrome.runtime.lastError.message)
+          : resolve(0);
       });
     });
   }
@@ -189,7 +194,9 @@ export default class WebConfig extends Config {
 
     return new Promise((resolve, reject) => {
       chrome.storage.sync.set(data, () => {
-        resolve(chrome.runtime.lastError ? 1 : 0);
+        chrome.runtime.lastError
+          ? reject(chrome.runtime.lastError.message)
+          : resolve(0);
       });
     });
   }

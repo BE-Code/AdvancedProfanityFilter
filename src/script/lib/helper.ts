@@ -1,26 +1,14 @@
 /* istanbul ignore next */
-export function dynamicList(list: string[], select: HTMLSelectElement, title?: string) {
+export function dynamicList(list: string[], select: HTMLSelectElement, upperCaseFirstChar: boolean = false, title?: string) {
   removeChildren(select);
   const array = title !== undefined ? [title].concat(list) : list;
 
   array.forEach((item) => {
     const option = document.createElement('option');
     option.value = (title && item === title) ? '' : item;
-    option.textContent = item;
+    option.textContent = upperCaseFirstChar ? upperCaseFirst(item) : item;
     select.appendChild(option);
   });
-}
-
-export function escapeHTML(str: string): string {
-  return str.replace(/([<>&"'])/g, (match, p1) => (
-    {
-      '<': '&lt;',
-      '>': '&gt;',
-      '&': '&amp;',
-      '"': '&quot;',
-      "'": '&apos;'
-    }[p1])
-  );
 }
 
 export function exportToFile(dataStr, fileName = 'data.txt') {
@@ -105,20 +93,20 @@ export function makeRequest(method: string, url: string) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open(method, url);
-    xhr.onload = () => {
+    xhr.onload = function() {
       if (this.status >= 200 && this.status < 300) {
-        resolve(xhr.response);
+        resolve(this.response);
       } else {
         reject({
           status: this.status,
-          statusText: xhr.statusText
+          statusText: this.statusText
         });
       }
     };
-    xhr.onerror = () => {
+    xhr.onerror = function() {
       reject({
         status: this.status,
-        statusText: xhr.statusText
+        statusText: this.statusText
       });
     };
     xhr.send();
@@ -147,4 +135,10 @@ export function removeFromArray(array: string[], element: string) {
 
 export function secondsToHMS(seconds: number): string {
   return new Date(seconds * 1000).toISOString().substr(11, 12);
+}
+
+export function upperCaseFirst(str: string, lowerCaseRest: boolean = true): string {
+  let value = str.charAt(0).toUpperCase();
+  value += lowerCaseRest ? str.toLowerCase().slice(1) : str.slice(1);
+  return value;
 }

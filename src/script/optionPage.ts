@@ -1,5 +1,5 @@
 import Constants from './lib/constants';
-import { dynamicList, escapeHTML, exportToFile, readFile, removeChildren, removeFromArray } from './lib/helper';
+import { dynamicList, exportToFile, readFile, removeChildren, removeFromArray, upperCaseFirst } from './lib/helper';
 import WebConfig from './webConfig';
 import Filter from './lib/filter';
 import Domain from './domain';
@@ -7,6 +7,8 @@ import OptionAuth from './optionAuth';
 import DataMigration from './dataMigration';
 import Bookmarklet from './bookmarklet';
 import WebAudioSites from './webAudioSites';
+import Logger from './lib/logger';
+const logger = new Logger();
 
 export default class OptionPage {
   auth: OptionAuth;
@@ -206,10 +208,11 @@ export default class OptionPage {
     subInput.value = data.sub;
 
     const matchMethodSelect = document.createElement('select');
-    Constants.orderedArray(Constants.MatchMethods).forEach((matchMethod, index) => {
+    Constants.orderedArray(Constants.MATCH_METHODS).forEach((matchMethodConst, index) => {
+      const matchMethod = upperCaseFirst(matchMethodConst);
       const optionElement = document.createElement('option');
-      optionElement.value = Constants.MatchMethods[matchMethod].toString();
-      optionElement.classList.add(`bulkMatchMethod${Constants.MatchMethods[matchMethod]}`);
+      optionElement.value = Constants.MATCH_METHODS[matchMethod].toString();
+      optionElement.classList.add(`bulkMatchMethod${Constants.MATCH_METHODS[matchMethod]}`);
       optionElement.textContent = matchMethod;
       matchMethodSelect.appendChild(optionElement);
     });
@@ -311,13 +314,15 @@ export default class OptionPage {
       }
     });
 
-    if (await this.cfg.save('words')) {
-      OptionPage.showErrorModal('Failed to save.');
-    } else {
+    try {
+      await this.cfg.save('words');
       OptionPage.closeModal('bulkWordEditorModal');
       OptionPage.showStatusModal('Words saved successfully.');
       filter.rebuildWordlists();
       this.populateOptions();
+    } catch(e) {
+      logger.warn('Failed to save.', e);
+      OptionPage.showErrorModal(`Failed to save. [Error: ${e}]`);
     }
   }
 
@@ -491,15 +496,15 @@ export default class OptionPage {
       const migration = new DataMigration(importedCfg);
       migration.runImportMigrations();
       const resetSuccess = await this.restoreDefaults(null, true);
-
       if (resetSuccess) {
-        this.cfg = importedCfg;
-        const error = await this.cfg.save();
-        if (!error) {
+        try {
+          this.cfg = importedCfg;
+          await this.cfg.save();
           OptionPage.showStatusModal('Settings imported successfully.');
           this.init();
-        } else {
-          OptionPage.showErrorModal('Failed to import settings.');
+        } catch(e) {
+          logger.warn('Failed to import settings.', e);
+          OptionPage.showErrorModal(`Failed to import settings. [Error: ${e}]`);
         }
       }
     } catch(e) {
@@ -513,22 +518,21 @@ export default class OptionPage {
     filter.cfg = this.cfg;
     filter.init();
 
-    // console.log('Password:', cfg.password, 'Authenticated:', authenticated); // DEBUG Password
+    // logger.debug(`Password: '${this.cfg.password}', Authenticated: ${this.auth.authenticated}`);
     if (this.cfg.password && !this.auth.authenticated) {
-      // console.log('Prompt for password'); // DEBUG Password
       OptionPage.openModal('passwordModal');
       document.getElementById('passwordInput').focus();
     } else {
       OptionPage.show(document.getElementById('main'));
     }
 
-    if (this.cfg.darkMode) { this.applyTheme(); }
-
+    this.applyTheme();
     this.populateOptions();
   }
 
   populateAudio() {
     const muteAudioInput = document.getElementById('muteAudio') as HTMLInputElement;
+    const fillerAudioSelect = document.getElementById('fillerAudioSelect') as HTMLSelectElement;
     const muteAudioOnlyInput = document.getElementById('muteAudioOnly') as HTMLInputElement;
     const muteCueRequireShowingInput = document.getElementById('muteCueRequireShowing') as HTMLInputElement;
     const selectedMuteMethod = document.querySelector(`input[name=audioMuteMethod][value='${this.cfg.muteMethod}']`) as HTMLInputElement;
@@ -538,6 +542,7 @@ export default class OptionPage {
     const audioYouTubeAutoSubsMax = document.getElementById('audioYouTubeAutoSubsMax') as HTMLInputElement;
     const customAudioSitesTextArea = document.getElementById('customAudioSitesText') as HTMLTextAreaElement;
     muteAudioInput.checked = this.cfg.muteAudio;
+    fillerAudioSelect.value = this.cfg.fillerAudio;
     muteAudioOnlyInput.checked = this.cfg.muteAudioOnly;
     muteCueRequireShowingInput.checked = this.cfg.muteCueRequireShowing;
     this.cfg.muteAudio ? OptionPage.show(muteAudioOptionsContainer) : OptionPage.hide(muteAudioOptionsContainer);
@@ -588,7 +593,7 @@ export default class OptionPage {
 
     const domainKey = domainText.value.trim().toLowerCase();
     if (domainKey == '') { // No data
-      domainModeSelect.selectedIndex = Constants.DomainModes.Normal;
+      domainModeSelect.selectedIndex = Constants.DOMAIN_MODES.NORMAL;
     } else {
       const domain = new Domain(domainKey, domainCfg);
       domainModeSelect.selectedIndex = domain.getModeIndex();
@@ -633,7 +638,7 @@ export default class OptionPage {
       OptionPage.show(domainDisabledLabel);
     }
 
-    dynamicList(Constants.orderedArray(Constants.DomainModes), domainModeSelect);
+    dynamicList(Constants.orderedArray(Constants.DOMAIN_MODES), domainModeSelect, true);
 
     if (this.cfg.wordlistsEnabled) {
       OptionPage.show(wordlistContainer);
@@ -709,7 +714,7 @@ export default class OptionPage {
     removeChildren(defaultWordMatchMethodSelect);
     for (let i = 0; i < 3; i++) { // Skip Regex
       const optionElement = document.createElement('option');
-      const matchMethodName = Constants.matchMethodName(i);
+      const matchMethodName = upperCaseFirst(Constants.matchMethodName(i));
       optionElement.value = matchMethodName;
       optionElement.textContent = matchMethodName;
       defaultWordMatchMethodSelect.appendChild(optionElement);
@@ -739,7 +744,7 @@ export default class OptionPage {
       const optionElement = document.createElement('option');
       optionElement.value = item === list[0] ? '' : item.replace(regExp, '');
       optionElement.dataset.sensitive = regExp.test(item).toString();
-      optionElement.textContent = escapeHTML(item);
+      optionElement.textContent = item;
       whitelist.appendChild(optionElement);
     });
     this.populateWhitelistWord();
@@ -783,7 +788,7 @@ export default class OptionPage {
     if (word == '') { // New word
       wordText.value = '';
       OptionPage.disableBtn(wordRemove);
-      const selectedMatchMethod = document.getElementById(`wordMatch${Constants.matchMethodName(this.cfg.defaultWordMatchMethod)}`) as HTMLInputElement;
+      const selectedMatchMethod = document.getElementById(`wordMatch${upperCaseFirst(Constants.matchMethodName(this.cfg.defaultWordMatchMethod))}`) as HTMLInputElement;
       selectedMatchMethod.checked = true;
       wordMatchRepeated.checked = this.cfg.defaultWordRepeat;
       wordMatchSeparators.checked = this.cfg.defaultWordSeparators;
@@ -801,7 +806,7 @@ export default class OptionPage {
       OptionPage.enableBtn(wordRemove);
       const wordCfg = this.cfg.words[word];
       wordText.value = word;
-      const selectedMatchMethod = document.getElementById(`wordMatch${Constants.matchMethodName(wordCfg.matchMethod)}`) as HTMLInputElement;
+      const selectedMatchMethod = document.getElementById(`wordMatch${upperCaseFirst(Constants.matchMethodName(wordCfg.matchMethod))}`) as HTMLInputElement;
       selectedMatchMethod.checked = true;
       wordMatchRepeated.checked = wordCfg.repeat;
       wordMatchSeparators.checked = wordCfg.separators === undefined ? this.cfg.defaultWordSeparators : wordCfg.separators;
@@ -873,7 +878,7 @@ export default class OptionPage {
     words.forEach((word) => {
       let filteredWord = word;
       if (word != words[0] && wordlistFilter.cfg.filterWordList) {
-        if (wordlistFilter.cfg.words[word].matchMethod === Constants.MatchMethods.Regex) { // Regexp
+        if (wordlistFilter.cfg.words[word].matchMethod === Constants.MATCH_METHODS.REGEX) { // Regexp
           filteredWord = wordlistFilter.cfg.words[word].sub || wordlistFilter.cfg.defaultSubstitution;
         } else {
           filteredWord = wordlistFilter.replaceText(word, 0, false); // Using 0 (All) here to filter all words
@@ -883,7 +888,7 @@ export default class OptionPage {
       const optionElement = document.createElement('option');
       optionElement.value = word === words[0] ? '' : word;
       optionElement.dataset.filtered = filteredWord;
-      optionElement.textContent = escapeHTML(filteredWord);
+      optionElement.textContent = filteredWord;
       wordsSelect.appendChild(optionElement);
     });
 
@@ -920,12 +925,13 @@ export default class OptionPage {
     if (domainsSelect.value) {
       delete this.cfg.domains[domainsSelect.value];
 
-      const error = await this.cfg.save('domains');
-      if (error) {
-        OptionPage.showErrorModal();
-        return false;
-      } else {
+      try {
+        await this.cfg.save('domains');
         this.populateDomainPage();
+      } catch(e) {
+        logger.warn(`Failed to remove domain '${domainsSelect.value}'.`, e);
+        OptionPage.showErrorModal(`Failed to remove domain '${domainsSelect.value}'. [Error: ${e}]`);
+        return false;
       }
     }
   }
@@ -938,13 +944,14 @@ export default class OptionPage {
     const originalListName = originalCase === 'sensitive' ? 'wordWhitelist' : 'iWordWhitelist';
     this.cfg[originalListName] = removeFromArray(this.cfg[originalListName], originalWord);
 
-    const error = await this.cfg.save(originalListName);
-    if (error) {
-      OptionPage.showErrorModal();
-      return false;
-    } else {
+    try {
+      await this.cfg.save(originalListName);
       filter.init();
       this.populateOptions();
+    } catch(e) {
+      logger.warn(`Failed to remove '${originalWord} from whitelist.`, e);
+      OptionPage.showErrorModal(`Failed to remove '${originalWord} from whitelist. [Error: ${e}]`);
+      return false;
     }
   }
 
@@ -991,14 +998,15 @@ export default class OptionPage {
   }
 
   async restoreDefaults(evt, silent = false) {
-    const error = await this.cfg.reset();
-    if (error) {
-      OptionPage.showErrorModal('Error restoring defaults!');
-      return false;
-    } else {
-      if (!silent) OptionPage.showStatusModal('Default settings restored');
+    try {
+      await this.cfg.reset();
+      if (!silent) OptionPage.showStatusModal('Default settings restored.');
       this.init();
       return true;
+    } catch(e) {
+      logger.warn('Error restoring defaults.', e);
+      OptionPage.showErrorModal(`Error restoring defaults. [Error: ${e}]`);
+      return false;
     }
   }
 
@@ -1079,6 +1087,7 @@ export default class OptionPage {
     const defaultWordSubstitution = document.getElementById('defaultWordSubstitutionText') as HTMLInputElement;
     const domainMode = document.querySelector('input[name="domainMode"]:checked') as HTMLInputElement;
     const muteAudioInput = document.getElementById('muteAudio') as HTMLInputElement;
+    const fillerAudioSelect = document.getElementById('fillerAudioSelect') as HTMLSelectElement;
     const muteAudioOnlyInput = document.getElementById('muteAudioOnly') as HTMLInputElement;
     const muteCueRequireShowingInput = document.getElementById('muteCueRequireShowing') as HTMLInputElement;
     const muteMethodInput = document.querySelector('input[name="audioMuteMethod"]:checked') as HTMLInputElement;
@@ -1100,6 +1109,7 @@ export default class OptionPage {
     this.cfg.defaultSubstitution = defaultWordSubstitution.value.trim().toLowerCase();
     this.cfg.enabledDomainsOnly = (domainMode.value === 'minimal');
     this.cfg.muteAudio = muteAudioInput.checked;
+    this.cfg.fillerAudio = fillerAudioSelect.value;
     this.cfg.muteAudioOnly = muteAudioOnlyInput.checked;
     this.cfg.muteCueRequireShowing = muteCueRequireShowingInput.checked;
     this.cfg.muteMethod = parseInt(muteMethodInput.value);
@@ -1107,23 +1117,26 @@ export default class OptionPage {
     this.cfg.wordlistsEnabled = wordlistsEnabledInput.checked;
 
     // Save settings
-    const error = await this.cfg.save();
-    if (error) {
-      OptionPage.showErrorModal('Settings not saved! Please try again.');
-      return false;
-    } else {
+    try {
+      await this.cfg.save();
       this.init();
       return true;
+    } catch(e) {
+      logger.warn('Settings not saved! Please try again.', e);
+      OptionPage.showErrorModal(`Settings not saved! Please try again. [Error: ${e}]`);
+      return false;
     }
   }
 
   async saveProp(prop: string) {
-    const error = await this.cfg.save(prop);
-    if (error) {
-      OptionPage.showErrorModal();
+    try {
+      await this.cfg.save(prop);
+      return true;
+    } catch(e) {
+      logger.warn(`Failed to save '${prop}'.`, e);
+      OptionPage.showErrorModal(`Failed to save '${prop}'. [Error: ${e}]`);
       return false;
     }
-    return true;
   }
 
   async saveWhitelist(evt) {
@@ -1167,13 +1180,14 @@ export default class OptionPage {
         propsToSave.forEach((prop) => {
           this.cfg[prop] = this.cfg[prop].sort();
         });
-        const error = await this.cfg.save(propsToSave);
-        if (error) {
-          OptionPage.showErrorModal();
-          return false;
-        } else {
+        try {
+          await this.cfg.save(propsToSave);
           filter.init();
           this.populateOptions();
+        } catch(e) {
+          logger.warn('Failed to update whitelist.', e);
+          OptionPage.showErrorModal(`Failed to update whitelist. [Error: ${e}]`);
+          return false;
         }
       }
     } else {
@@ -1193,7 +1207,7 @@ export default class OptionPage {
     let added = true;
     const wordlistSelectionsInput = document.querySelectorAll('div#wordlistSelections input') as NodeListOf<HTMLInputElement>;
 
-    if (Constants.MatchMethods[selectedMatchMethod.value] !== Constants.MatchMethods.Regex) {
+    if (Constants.MATCH_METHODS[selectedMatchMethod.value] !== Constants.MATCH_METHODS.REGEX) {
       word = word.toLowerCase();
     }
 
@@ -1214,18 +1228,18 @@ export default class OptionPage {
 
       const wordOptions: WordOptions = {
         lists: lists,
-        matchMethod: Constants.MatchMethods[selectedMatchMethod.value],
+        matchMethod: Constants.MATCH_METHODS[selectedMatchMethod.value],
         repeat: wordMatchRepeated.checked,
         separators: wordMatchSeparators.checked,
         sub: sub
       };
 
       // Check for endless substitution loop
-      if (wordOptions.matchMethod != Constants.MatchMethods.Regex) {
+      if (wordOptions.matchMethod != Constants.MATCH_METHODS.REGEX) {
         const subFilter = new Filter;
         const words = {};
         words[word] = wordOptions;
-        subFilter.cfg = new WebConfig(Object.assign({}, this.cfg, { filterMethod: Constants.FilterMethods.Substitute }, { words: words }));
+        subFilter.cfg = new WebConfig(Object.assign({}, this.cfg, { filterMethod: Constants.FILTER_METHODS.SUBSTITUTE }, { words: words }));
         subFilter.init();
         const first = subFilter.replaceTextResult(word);
         const second = subFilter.replaceTextResult(first.filtered);
@@ -1236,7 +1250,7 @@ export default class OptionPage {
       }
 
       // Test for a valid Regex
-      if (wordOptions.matchMethod === Constants.MatchMethods.Regex) {
+      if (wordOptions.matchMethod === Constants.MATCH_METHODS.REGEX) {
         const subFilter = new Filter;
         const words = {};
         words[word] = wordOptions;
@@ -1249,15 +1263,15 @@ export default class OptionPage {
       }
 
       if (wordList.value === '') { // New record
-        // console.log('Adding new word: ', word, wordOptions); // DEBUG
+        logger.info(`Adding new word: '${word}'.`, wordOptions);
         added = this.cfg.addWord(word, wordOptions);
       } else { // Updating existing record
         const originalWord = wordList.value;
         if (originalWord == word) { // Word options changed
-          // console.log('Modifying existing word options: ', word, wordOptions); // DEBUG
+          logger.info(`Modifying existing word options for '${word}'.`, wordOptions);
           this.cfg.words[word] = wordOptions;
         } else { // Existing word modified
-          // console.log('Modifying existing word: ', word, wordOptions); // DEBUG
+          logger.info(`Rename existing word '${originalWord}' to '${word}'.`, wordOptions);
           added = this.cfg.addWord(word, wordOptions);
           if (added) {
             delete this.cfg.words[originalWord];
@@ -1268,15 +1282,17 @@ export default class OptionPage {
       }
 
       if (added) {
-        const success = await this.saveOptions(evt);
-        if (!success) {
-          OptionPage.showErrorModal();
+        try {
+          await this.saveOptions(evt);
+          // Update states and Reset word form
+          filter.rebuildWordlists();
+          this.populateOptions();
+        } catch(e) {
+          logger.warn(`Failed to update word '${word}'.`, e);
+          OptionPage.showErrorModal(`Failed to update word '${word}'. [Error: ${e}]`);
+          this.cfg.removeWord(word);
           return false;
         }
-
-        // Update states and Reset word form
-        filter.rebuildWordlists();
-        this.populateOptions();
       } else {
         OptionPage.showInputError(wordText, `'${word}' already in list.`);
       }
@@ -1286,7 +1302,7 @@ export default class OptionPage {
   }
 
   async selectFilterMethod(evt) {
-    this.cfg.filterMethod = Constants.FilterMethods[evt.target.value];
+    this.cfg.filterMethod = Constants.FILTER_METHODS[evt.target.value];
     if (await this.saveProp('filterMethod')) {
       filter.rebuildWordlists();
       this.populateOptions();
@@ -1412,17 +1428,17 @@ export default class OptionPage {
   updateFilterOptions() {
     // Show/hide options as needed
     switch(this.cfg.filterMethod) {
-      case Constants.FilterMethods.Censor:
+      case Constants.FILTER_METHODS.CENSOR:
         OptionPage.show(document.getElementById('censorSettings'));
         OptionPage.hide(document.getElementById('substitutionSettings'));
         OptionPage.hide(document.getElementById('wordSubstitution'));
         break;
-      case Constants.FilterMethods.Substitute:
+      case Constants.FILTER_METHODS.SUBSTITUTE:
         OptionPage.hide(document.getElementById('censorSettings'));
         OptionPage.show(document.getElementById('substitutionSettings'));
         OptionPage.show(document.getElementById('wordSubstitution'));
         break;
-      case Constants.FilterMethods.Remove:
+      case Constants.FILTER_METHODS.REMOVE:
         OptionPage.hide(document.getElementById('censorSettings'));
         OptionPage.hide(document.getElementById('substitutionSettings'));
         OptionPage.hide(document.getElementById('wordSubstitution'));
@@ -1547,6 +1563,7 @@ document.getElementById('domainRemove').addEventListener('click', (e) => { optio
 // Audio
 document.getElementById('muteAudio').addEventListener('click', (e) => { option.saveOptions(e); });
 document.getElementById('supportedAudioSites').addEventListener('click', (e) => { option.showSupportedAudioSites(); });
+document.getElementById('fillerAudioSelect').addEventListener('change', (e) => { option.saveOptions(e); });
 document.getElementById('muteAudioOnly').addEventListener('click', (e) => { option.saveOptions(e); });
 document.getElementById('muteCueRequireShowing').addEventListener('click', (e) => { option.saveOptions(e); });
 document.querySelectorAll('#audioMuteMethod input').forEach((el) => { el.addEventListener('click', (e) => { option.saveOptions(e); }); });

@@ -64,10 +64,10 @@ export default class DataMigration {
   fixSmartWatch() {
     const cfg = this.cfg;
     const originalWord = 'twat';
-    const originalWordConf = { matchMethod: Constants.MatchMethods.Partial, repeat: true, sub: 'dumbo' };
+    const originalWordConf = { matchMethod: Constants.MATCH_METHODS.PARTIAL, repeat: true, sub: 'dumbo' };
     const update = {
-      twat: { matchMethod: Constants.MatchMethods.Exact, repeat: true, sub: 'dumbo' },
-      twats: { matchMethod: Constants.MatchMethods.Exact, repeat: true, sub: 'dumbos' }
+      twat: { matchMethod: Constants.MATCH_METHODS.EXACT, repeat: true, sub: 'dumbo' },
+      twats: { matchMethod: Constants.MATCH_METHODS.EXACT, repeat: true, sub: 'dumbos' }
     };
 
     if (
@@ -111,7 +111,7 @@ export default class DataMigration {
         const word = cfg.words[name];
         // Move RegExp from 4 to 3
         if (word.matchMethod === 4) {
-          word.matchMethod = Constants.MatchMethods.Regex;
+          word.matchMethod = Constants.MATCH_METHODS.REGEX;
         }
       });
       cfg.remove('globalMatchMethod');
@@ -156,7 +156,6 @@ export default class DataMigration {
   singleWordSubstitution() {
     const cfg = this.cfg;
 
-    // console.log('before', JSON.stringify(cfg.words));
     Object.keys(cfg.words).forEach((word) => {
       const wordObj = cfg.words[word] as WordOptions;
       if (wordObj.hasOwnProperty('words')) {
@@ -166,7 +165,6 @@ export default class DataMigration {
         delete wordObj.words;
       }
     });
-    // console.log('after', JSON.stringify(cfg.words));
   }
 
   // [2.1.4] - Update default sub values

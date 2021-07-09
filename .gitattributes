@@ -1,5 +1,7 @@
-* eol=lf
+text eol=lf
+
 *.jpg binary
+*.mp3 binary
 *.png binary
 
 # https://github.com/github/linguist#overrides

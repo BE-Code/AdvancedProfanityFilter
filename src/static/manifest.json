@@ -3,7 +3,7 @@
   "short_name": "Profanity Filter",
   "author": "Richard Frost",
   "manifest_version": 3,
-  "version": "2.15.0",
+  "version": "2.20.1",
   "description": "Advanced Profanity Filter helps to clean up bad language on the websites you and your family visit.",
   "icons": {
     "16": "img/icon16.png",
@@ -21,7 +21,7 @@
     "page": "optionPage.html"
   },
   "background": {
-    "service_worker": "eventPage.js"
+    "service_worker": "background.js"
   },
   "action": {
     "default_icon": {
@@ -43,5 +43,8 @@
       "all_frames": true,
       "match_about_blank": true
     }
+  ],
+  "web_accessible_resources": [
+    "audio/*.mp3"
   ]
 }
