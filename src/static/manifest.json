@@ -45,6 +45,9 @@
     }
   ],
   "web_accessible_resources": [
-    "audio/*.mp3"
+    {
+      "resources": [ "audio/*.mp3" ],
+      "matches": [ "<all_urls>" ]
+    }
   ]
 }
